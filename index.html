@@ -1,0 +1,124 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pitch Matching Game</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; margin-top: 50px; }
+        #progress { width: 80%; height: 30px; background-color: #eee; margin: 20px auto; }
+        #progress-bar { height: 30px; width: 0%; background-color: green; }
+        #target, #current { font-size: 24px; margin: 20px; }
+        #start-btn { padding: 10px 20px; font-size: 20px; }
+    </style>
+</head>
+<body>
+
+<h1>Pitch Matching Game</h1>
+
+<div id="target">Target: -- Hz</div>
+<div id="current">Detected: -- Hz</div>
+
+<div id="progress">
+    <div id="progress-bar"></div>
+</div>
+
+<button id="start-btn">Start Game</button>
+
+<script>
+const targetElement = document.getElementById('target');
+const currentElement = document.getElementById('current');
+const progressBar = document.getElementById('progress-bar');
+const startButton = document.getElementById('start-btn');
+
+let audioContext, analyser, source, dataArray;
+let frequencies = [];
+let currentTargetIndex = 0;
+let listening = false;
+let startTime;
+const LISTEN_TIME = 4; // seconds
+const ERROR_MARGIN = 20; // Hz
+
+// Get user microphone input
+async function initAudio() {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    source = audioContext.createMediaStreamSource(stream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    dataArray = new Float32Array(analyser.fftSize);
+}
+
+// Find the dominant frequency
+function getPitch() {
+    analyser.getFloatTimeDomainData(dataArray);
+    let maxVal = 0, maxIndex = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+        if (Math.abs(dataArray[i]) > maxVal) {
+            maxVal = Math.abs(dataArray[i]);
+            maxIndex = i;
+        }
+    }
+    const frequency = audioContext.sampleRate * maxIndex / analyser.fftSize;
+    return frequency;
+}
+
+// Game logic
+async function startGame() {
+    frequencies = [];
+    for (let i = 1; i <= 8; i++) {
+        let freq = prompt(`Enter target frequency ${i} (Hz):`);
+        if (freq === null) return; // Cancelled
+        frequencies.push(parseFloat(freq));
+    }
+
+    startButton.disabled = true;
+    await initAudio();
+    nextPitch();
+}
+
+function nextPitch() {
+    if (currentTargetIndex >= frequencies.length) {
+        targetElement.textContent = "Game Over!";
+        startButton.disabled = false;
+        return;
+    }
+
+    const targetFreq = frequencies[currentTargetIndex];
+    targetElement.textContent = `Target: ${targetFreq.toFixed(1)} Hz`;
+    listening = true;
+    startTime = Date.now();
+    update();
+}
+
+function update() {
+    if (!listening) return;
+
+    const detectedFreq = getPitch();
+    currentElement.textContent = `Detected: ${detectedFreq.toFixed(1)} Hz`;
+
+    const elapsed = (Date.now() - startTime) / 1000;
+    const progressPercent = (elapsed / LISTEN_TIME) * 100;
+    progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+
+    if (elapsed > LISTEN_TIME) {
+        listening = false;
+        if (Math.abs(detectedFreq - frequencies[currentTargetIndex]) <= ERROR_MARGIN) {
+            targetElement.textContent = `Matched ${frequencies[currentTargetIndex].toFixed(1)} Hz!`;
+        } else {
+            targetElement.textContent = `Missed ${frequencies[currentTargetIndex].toFixed(1)} Hz!`;
+        }
+        currentTargetIndex++;
+        setTimeout(nextPitch, 1000);
+    } else {
+        requestAnimationFrame(update);
+    }
+}
+
+startButton.addEventListener('click', startGame);
+</script>
+
+</body>
+</html>
